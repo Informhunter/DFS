@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"time"
 )
 
 const (
@@ -21,8 +22,15 @@ var (
 	ErrorFileDoesNotExist  = errors.New("File does not exist.")
 )
 
+type ServerStatus struct {
+	RequestsPerMinute int
+	TokenCount        int
+	RequestCounter    int
+}
+
 type Server struct {
 	sync.Mutex
+	status      ServerStatus
 	tokenMap    map[string]string
 	lockedPaths map[string]bool
 }
@@ -30,6 +38,20 @@ type Server struct {
 func (server *Server) Start() {
 	server.tokenMap = make(map[string]string, 0)
 	server.lockedPaths = make(map[string]bool, 0)
+
+	ticker := time.Tick(time.Second * 10)
+	go func() {
+		for {
+			select {
+			case <-ticker:
+				server.Lock()
+				server.status.RequestsPerMinute = server.status.RequestCounter * 6
+				server.status.RequestCounter = 0
+				server.status.TokenCount = len(server.tokenMap)
+				server.Unlock()
+			}
+		}
+	}()
 }
 
 func (server *Server) RequestUpload(bucketName, fileName string) (address, token string, err error) {
@@ -38,6 +60,8 @@ func (server *Server) RequestUpload(bucketName, fileName string) (address, token
 
 	server.Lock()
 	defer server.Unlock()
+
+	server.status.RequestCounter += 1
 
 	if _, err := os.Stat(uploadPath); !os.IsNotExist(err) {
 		return "", "", ErrorFileAlreadyExists
@@ -56,14 +80,18 @@ func (server *Server) RequestUpload(bucketName, fileName string) (address, token
 func (server *Server) Upload(token string, file multipart.File, fileHeader *multipart.FileHeader) (err error) {
 	server.Lock()
 	defer server.Unlock()
+
+	server.status.RequestCounter += 1
+
 	uploadPath, exists := server.tokenMap[token]
 	if !exists {
 		return ErrorTokenDoesNotExist
 	}
+
 	delete(server.tokenMap, token)
 	delete(server.lockedPaths, uploadPath)
 
-	err = os.MkdirAll(path.Dir(uploadPath), 0777)
+	err = os.MkdirAll(path.Dir(uploadPath), 0755)
 	if err != nil {
 		return err
 	}
@@ -73,9 +101,15 @@ func (server *Server) Upload(token string, file multipart.File, fileHeader *mult
 		return err
 	}
 
-	defer resultFile.Close()
+	_, err = io.Copy(resultFile, file)
+	if err != nil {
+		resultFile.Close()
+		os.Remove(uploadPath)
+		return err
+	}
 
-	io.Copy(resultFile, file)
+	resultFile.Close()
+
 	return nil
 }
 
@@ -85,6 +119,8 @@ func (server *Server) RequestDownload(bucketName, fileName string) (address, tok
 
 	server.Lock()
 	defer server.Unlock()
+
+	server.status.RequestCounter += 1
 
 	if _, err := os.Stat(downloadPath); os.IsNotExist(err) {
 		return "", "", ErrorFileDoesNotExist
@@ -97,9 +133,12 @@ func (server *Server) RequestDownload(bucketName, fileName string) (address, tok
 	server.tokenMap[token] = downloadPath
 	return "some download address", token, nil
 }
+
 func (server *Server) Download(token string) (downloadPath string, err error) {
 	server.Lock()
 	defer server.Unlock()
+
+	server.status.RequestCounter += 1
 
 	downloadPath, exists := server.tokenMap[token]
 
@@ -109,4 +148,10 @@ func (server *Server) Download(token string) (downloadPath string, err error) {
 	delete(server.tokenMap, token)
 
 	return downloadPath, err
+}
+
+func (server *Server) Status() ServerStatus {
+	server.Lock()
+	defer server.Unlock()
+	return server.status
 }
