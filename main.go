@@ -3,9 +3,12 @@ package main
 
 import (
 	s "dfs/server"
+	u "dfs/util"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"text/template"
 )
 
@@ -20,6 +23,10 @@ const (
 	UploadURL          = "/upload/"
 )
 
+var (
+	ErrorBadQuery = errors.New("Bad query.")
+)
+
 var server s.Server
 var uploadHtmlTemplate *template.Template
 var downloadHtmlTemplate *template.Template
@@ -27,10 +34,12 @@ var downloadHtmlTemplate *template.Template
 func main() {
 
 	var err error
+
 	uploadHtmlTemplate, err = template.ParseFiles("templates/upload.html")
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	downloadHtmlTemplate, err = template.ParseFiles("templates/download.html")
 	if err != nil {
 		log.Fatal(err)
@@ -42,24 +51,17 @@ func main() {
 	http.HandleFunc(DownloadURL, download)
 	http.HandleFunc(RequestUploadURL, requestUpload)
 	http.HandleFunc(UploadURL, upload)
-	http.ListenAndServe(":80", nil)
+	http.ListenAndServe("localhost:80", nil)
 }
 
 func requestDownload(response http.ResponseWriter, request *http.Request) {
-	query := request.URL.Query()
-	bucketName, exists := query["bucket"]
-	if !exists {
-		http.NotFound(response, request)
+	bucketName, fileName, err := extractBucketNameFileName(request)
+	if err != nil {
+		http.Error(response, err.Error(), 403)
 		return
 	}
 
-	fileName, exists := query["filename"]
-	if !exists {
-		http.NotFound(response, request)
-		return
-	}
-
-	address, token, err := server.RequestDownload(bucketName[0], fileName[0])
+	address, token, err := server.RequestDownload(bucketName, fileName)
 	if err != nil {
 		http.Error(response, err.Error(), 403)
 		return
@@ -69,8 +71,8 @@ func requestDownload(response http.ResponseWriter, request *http.Request) {
 		DownloadURL      string
 		DownloadFileName string
 	}{
-		DownloadURL + "?download_token=" + token,
-		fileName[0],
+		DownloadURL + token,
+		fileName,
 	})
 
 	enc := json.NewEncoder(response)
@@ -86,20 +88,19 @@ func requestDownload(response http.ResponseWriter, request *http.Request) {
 		BucketName string
 		FileName   string
 	}{
-		bucketName[0],
-		fileName[0],
+		bucketName,
+		fileName,
 	})
 }
 
 func download(response http.ResponseWriter, request *http.Request) {
-	query := request.URL.Query()
-	downloadToken, exists := query["download_token"]
-	if !exists {
-		http.NotFound(response, request)
+	downloadToken, err := extractToken(request)
+	if err != nil {
+		http.Error(response, err.Error(), 403)
 		return
 	}
 
-	downloadPath, err := server.Download(downloadToken[0])
+	downloadPath, err := server.Download(downloadToken)
 	if err != nil {
 		http.Error(response, err.Error(), 403)
 		return
@@ -111,25 +112,18 @@ func download(response http.ResponseWriter, request *http.Request) {
 	enc.Encode(struct {
 		DownloadToken string
 	}{
-		downloadToken[0],
+		downloadToken,
 	})
 }
 
 func requestUpload(response http.ResponseWriter, request *http.Request) {
-	query := request.URL.Query()
-	bucketName, exists := query["bucket"]
-	if !exists {
-		http.NotFound(response, request)
+	bucketName, fileName, err := extractBucketNameFileName(request)
+	if err != nil {
+		http.Error(response, err.Error(), 403)
 		return
 	}
 
-	fileName, exists := query["filename"]
-	if !exists {
-		http.NotFound(response, request)
-		return
-	}
-
-	address, token, err := server.RequestUpload(bucketName[0], fileName[0])
+	address, token, err := server.RequestUpload(bucketName, fileName)
 	if err != nil {
 		http.Error(response, err.Error(), 403)
 		return
@@ -139,7 +133,7 @@ func requestUpload(response http.ResponseWriter, request *http.Request) {
 		Action        string
 		UploadFileKey string
 	}{
-		UploadURL + "?upload_token=" + token,
+		UploadURL + token,
 		UploadFileKey,
 	})
 
@@ -156,21 +150,19 @@ func requestUpload(response http.ResponseWriter, request *http.Request) {
 		BucketName string
 		FileName   string
 	}{
-		bucketName[0],
-		fileName[0],
+		bucketName,
+		fileName,
 	})
 }
 
 func upload(response http.ResponseWriter, request *http.Request) {
-	query := request.URL.Query()
-
-	uploadToken, exists := query["upload_token"]
-	if !exists {
+	uploadToken, err := extractToken(request)
+	if err != nil {
 		uploadHtmlTemplate.Execute(response, struct {
 			Action        string
 			UploadFileKey string
 		}{
-			UploadURL + "?upload_token=" + "some_token",
+			UploadURL + uploadToken,
 			UploadFileKey,
 		})
 		return
@@ -182,15 +174,15 @@ func upload(response http.ResponseWriter, request *http.Request) {
 			Action        string
 			UploadFileKey string
 		}{
-			UploadURL + "?upload_token=" + "some_token",
+			UploadURL + uploadToken,
 			UploadFileKey,
 		})
 		return
 	}
 
-	err = server.Upload(uploadToken[0], file, fileHeader)
+	err = server.Upload(uploadToken, file, fileHeader)
 	if err != nil {
-		http.NotFound(response, request)
+		http.Error(response, err.Error(), 403)
 		return
 	}
 
@@ -199,7 +191,35 @@ func upload(response http.ResponseWriter, request *http.Request) {
 		UploadToken string
 		FileName    string
 	}{
-		uploadToken[0],
+		uploadToken,
 		fileHeader.Filename,
 	})
+}
+
+func extractBucketNameFileName(request *http.Request) (bucketName string, fileName string, err error) {
+	parts := strings.Split(request.URL.Path[1:], "/")
+	if len(parts) != 3 {
+		return "", "", ErrorBadQuery
+	}
+
+	if !u.IsValidName(parts[1]) {
+		return "", "", ErrorBadQuery
+	}
+
+	if !u.IsValidName(parts[2]) {
+		return "", "", ErrorBadQuery
+	}
+
+	return parts[1], parts[2], nil
+}
+
+func extractToken(request *http.Request) (token string, err error) {
+	parts := strings.Split(request.URL.Path[1:], "/")
+	if len(parts) != 2 {
+		return "", ErrorBadQuery
+	}
+	if !u.IsValidName(parts[1]) {
+		return "", ErrorBadQuery
+	}
+	return parts[1], nil
 }
