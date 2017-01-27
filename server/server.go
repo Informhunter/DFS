@@ -1,14 +1,17 @@
 package server
 
 import (
+	"dfs/comm"
+	"dfs/server/node"
+	"dfs/server/status"
 	"errors"
+	"fmt"
 	"github.com/google/uuid"
 	"io"
 	"mime/multipart"
 	"os"
 	"path"
 	"sync"
-	"time"
 )
 
 const (
@@ -22,36 +25,42 @@ var (
 	ErrorFileDoesNotExist  = errors.New("File does not exist.")
 )
 
-type ServerStatus struct {
-	RequestsPerMinute int
-	TokenCount        int
-	RequestCounter    int
-}
-
 type Server struct {
 	sync.Mutex
-	status      ServerStatus
-	tokenMap    map[string]string
-	lockedPaths map[string]bool
+	statusManager status.StatusManager
+	nodeManager   node.NodeManager
+	msgHub        comm.MessageHub
+	tokenMap      map[string]string
+	lockedPaths   map[string]bool
 }
 
 func (server *Server) Start() {
 	server.tokenMap = make(map[string]string, 0)
 	server.lockedPaths = make(map[string]bool, 0)
 
-	ticker := time.Tick(time.Second * 10)
-	go func() {
-		for {
-			select {
-			case <-ticker:
-				server.Lock()
-				server.status.RequestsPerMinute = server.status.RequestCounter * 6
-				server.status.RequestCounter = 0
-				server.status.TokenCount = len(server.tokenMap)
-				server.Unlock()
-			}
-		}
-	}()
+	var addr string
+
+	fmt.Println("My Name:")
+	fmt.Scan(&server.nodeManager.This.Name)
+
+	fmt.Println("My PrivateAddress:")
+	fmt.Scan(&addr)
+
+	server.nodeManager.This.PrivateAddress = addr
+	server.nodeManager.This.PublicAddress = "localhost:80"
+
+	var otherNode node.NodeInfo
+
+	fmt.Println("Other node's Name:")
+	fmt.Scan(&otherNode.Name)
+	fmt.Println("Other node's PrivateAddress:")
+	fmt.Scan(&otherNode.PrivateAddress)
+
+	server.nodeManager.AddNode(otherNode)
+
+	server.statusManager.Listen(&server.nodeManager, &server.msgHub)
+
+	server.msgHub.Listen(&server.nodeManager, addr)
 }
 
 func (server *Server) RequestUpload(bucketName, fileName string) (address, token string, err error) {
@@ -61,7 +70,7 @@ func (server *Server) RequestUpload(bucketName, fileName string) (address, token
 	server.Lock()
 	defer server.Unlock()
 
-	server.status.RequestCounter += 1
+	server.statusManager.CountRequest()
 
 	if _, err := os.Stat(uploadPath); !os.IsNotExist(err) {
 		return "", "", ErrorFileAlreadyExists
@@ -72,6 +81,7 @@ func (server *Server) RequestUpload(bucketName, fileName string) (address, token
 	}
 
 	server.tokenMap[token] = uploadPath
+	server.statusManager.TokenAdded()
 	server.lockedPaths[uploadPath] = true
 
 	return "some upload address", token, nil
@@ -81,7 +91,7 @@ func (server *Server) Upload(token string, file multipart.File, fileHeader *mult
 	server.Lock()
 	defer server.Unlock()
 
-	server.status.RequestCounter += 1
+	server.statusManager.CountRequest()
 
 	uploadPath, exists := server.tokenMap[token]
 	if !exists {
@@ -89,6 +99,7 @@ func (server *Server) Upload(token string, file multipart.File, fileHeader *mult
 	}
 
 	delete(server.tokenMap, token)
+	server.statusManager.TokenDeleted()
 	delete(server.lockedPaths, uploadPath)
 
 	err = os.MkdirAll(path.Dir(uploadPath), 0755)
@@ -120,7 +131,7 @@ func (server *Server) RequestDownload(bucketName, fileName string) (address, tok
 	server.Lock()
 	defer server.Unlock()
 
-	server.status.RequestCounter += 1
+	server.statusManager.CountRequest()
 
 	if _, err := os.Stat(downloadPath); os.IsNotExist(err) {
 		return "", "", ErrorFileDoesNotExist
@@ -131,6 +142,8 @@ func (server *Server) RequestDownload(bucketName, fileName string) (address, tok
 	}
 
 	server.tokenMap[token] = downloadPath
+	server.statusManager.TokenAdded()
+
 	return "some download address", token, nil
 }
 
@@ -138,7 +151,7 @@ func (server *Server) Download(token string) (downloadPath string, err error) {
 	server.Lock()
 	defer server.Unlock()
 
-	server.status.RequestCounter += 1
+	server.statusManager.CountRequest()
 
 	downloadPath, exists := server.tokenMap[token]
 
@@ -147,11 +160,11 @@ func (server *Server) Download(token string) (downloadPath string, err error) {
 	}
 	delete(server.tokenMap, token)
 
+	server.statusManager.TokenDeleted()
+
 	return downloadPath, err
 }
 
-func (server *Server) Status() ServerStatus {
-	server.Lock()
-	defer server.Unlock()
-	return server.status
+func (server *Server) Status() status.NodeStatus {
+	return server.statusManager.Status()
 }

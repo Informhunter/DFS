@@ -5,6 +5,7 @@ import (
 	s "dfs/server"
 	u "dfs/util"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"text/template"
@@ -47,7 +48,12 @@ func main() {
 	http.HandleFunc(RequestUploadURL, requestUpload)
 	http.HandleFunc(UploadURL, upload)
 	http.HandleFunc(StatusURL, status)
-	http.ListenAndServe("localhost:80", nil)
+
+	var addr string
+	fmt.Println("My PublicAddress:")
+	fmt.Scan(&addr)
+
+	http.ListenAndServe(addr, nil)
 }
 
 func requestDownload(response http.ResponseWriter, request *http.Request) {
