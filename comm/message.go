@@ -9,7 +9,27 @@ type MessageType int8
 
 const (
 	MessageTypeStatus MessageType = iota
+	MessageTypeRequestUploadToken
+	MessageTypeUploadToken
+	MessageTypeRequestDownloadToken
+	MessageTypeDownloadToken
 )
+
+func (mt MessageType) String() string {
+	switch mt {
+	case MessageTypeStatus:
+		return "MessageTypeStatus"
+	case MessageTypeRequestUploadToken:
+		return "MessageTypeRequestUploadToken"
+	case MessageTypeUploadToken:
+		return "MessageTypeUploadToken"
+	case MessageTypeRequestDownloadToken:
+		return "MessageTypeRequestDownloadToken"
+	case MessageTypeDownloadToken:
+		return "MessageTypeDownloadToken"
+	}
+	return "Unknown"
+}
 
 type Message struct {
 	Type       MessageType

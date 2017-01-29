@@ -2,10 +2,11 @@
 package main
 
 import (
+	c "dfs/config"
 	s "dfs/server"
 	u "dfs/util"
 	"encoding/json"
-	"fmt"
+	"flag"
 	"log"
 	"net/http"
 	"text/template"
@@ -22,6 +23,8 @@ const (
 	UploadURL          = "/upload/"
 	StatusURL          = "/status/"
 )
+
+var configFileName = flag.String("config", "config.json", "Config file name")
 
 var server s.Server
 var uploadHtmlTemplate *template.Template
@@ -41,7 +44,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	server.Start()
+	flag.Parse()
+
+	var config c.Config
+	err = config.Load(*configFileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	server.Start(config)
 
 	http.HandleFunc(RequestDownloadURL, requestDownload)
 	http.HandleFunc(DownloadURL, download)
@@ -49,11 +60,7 @@ func main() {
 	http.HandleFunc(UploadURL, upload)
 	http.HandleFunc(StatusURL, status)
 
-	var addr string
-	fmt.Println("My PublicAddress:")
-	fmt.Scan(&addr)
-
-	http.ListenAndServe(addr, nil)
+	http.ListenAndServe(config.This.PublicAddress, nil)
 }
 
 func requestDownload(response http.ResponseWriter, request *http.Request) {
@@ -175,6 +182,7 @@ func upload(response http.ResponseWriter, request *http.Request) {
 
 func status(response http.ResponseWriter, request *http.Request) {
 	enc := json.NewEncoder(response)
+	enc.SetIndent("", "  ")
 	status := server.Status()
 	enc.Encode(status)
 }

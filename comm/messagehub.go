@@ -48,6 +48,7 @@ func (msgHub *MessageHub) Subscribe(msgHandler MessageHandler, msgTypes ...Messa
 }
 
 func (msgHub *MessageHub) Send(msg Message, nodeName string) error {
+	msg.SourceNode = msgHub.nodeManager.This.Name
 	node := msgHub.nodeManager.Node(nodeName)
 	conn, err := net.Dial("tcp", node.PrivateAddress)
 	if err != nil {
@@ -60,6 +61,7 @@ func (msgHub *MessageHub) Send(msg Message, nodeName string) error {
 }
 
 func (msgHub *MessageHub) Broadcast(msg Message) error {
+	msg.SourceNode = msgHub.nodeManager.This.Name
 	for _, node := range msgHub.nodeManager.Nodes() {
 		conn, err := net.Dial("tcp", node.PrivateAddress)
 		if err != nil {

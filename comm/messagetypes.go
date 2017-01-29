@@ -16,3 +16,12 @@ func (msg MessageNodeStatus) String() string {
 		msg.TokenCount,
 		msg.RequestCounter)
 }
+
+type MessageRequestToken struct {
+	Path string
+}
+
+type MessageToken struct {
+	Path  string
+	Token string
+}
