@@ -4,9 +4,9 @@ import (
 	"dfs/comm"
 	c "dfs/config"
 	"dfs/server/node"
+	"dfs/server/path"
 	"dfs/server/status"
 	"errors"
-	//"fmt"
 	"github.com/google/uuid"
 	"log"
 	"os"
@@ -37,6 +37,7 @@ type TokenManager struct {
 
 	nodeManager   *node.NodeManager
 	statusManager *status.StatusManager
+	pathManager   *path.PathManager
 	msgHub        *comm.MessageHub
 	config        *c.Config
 }
@@ -48,6 +49,7 @@ func (tm *TokenManager) UseConfig(config *c.Config) {
 func (tm *TokenManager) Listen(
 	nodeManager *node.NodeManager,
 	statusManager *status.StatusManager,
+	pathManager *path.PathManager,
 	msgHub *comm.MessageHub) {
 
 	tm.incomingUploadTokens = make(map[string]chan string, 0)
@@ -57,6 +59,7 @@ func (tm *TokenManager) Listen(
 
 	tm.nodeManager = nodeManager
 	tm.statusManager = statusManager
+	tm.pathManager = pathManager
 	tm.msgHub = msgHub
 
 	msgHub.Subscribe(tm,
@@ -73,6 +76,7 @@ func (tm *TokenManager) Listen(
 			now := time.Now()
 			for token, tokenInfo := range tm.uploadTokenMap {
 				if now.After(tokenInfo.ExpireTime) {
+					tm.pathManager.UnlockPath(tokenInfo.Path)
 					delete(tm.uploadTokenMap, token)
 					tm.statusManager.TokenDeleted()
 				}
@@ -197,9 +201,6 @@ func (tm *TokenManager) HandleMessage(msg *comm.Message) {
 	tm.mutex.Lock()
 	defer tm.mutex.Unlock()
 
-	//fmt.Printf("Got message from %s\n", msg.SourceNode)
-	//fmt.Printf("Message type: %s\n", msg.Type)
-
 	switch msg.Type {
 
 	case comm.MessageTypeRequestUploadToken:
@@ -254,7 +255,6 @@ func (tm *TokenManager) HandleMessage(msg *comm.Message) {
 		}
 		responseMsg.EncodeData(tokenMessage)
 		tm.msgHub.Send(responseMsg, msg.SourceNode)
-		//fmt.Println("Response msg sent.")
 
 	case comm.MessageTypeDownloadToken:
 		var response comm.MessageToken

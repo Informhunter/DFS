@@ -5,6 +5,7 @@ import (
 	c "dfs/config"
 	"dfs/server/lock"
 	"dfs/server/node"
+	sp "dfs/server/path"
 	"dfs/server/replication"
 	"dfs/server/status"
 	"dfs/server/token"
@@ -31,6 +32,7 @@ type Server struct {
 	tokenManager       token.TokenManager
 	lockManager        lock.LockManager
 	replicationManager replication.ReplicationManager
+	pathManager        sp.PathManager
 	msgHub             comm.MessageHub
 }
 
@@ -39,11 +41,18 @@ func (server *Server) Start(config c.Config) {
 
 	server.nodeManager.UseConfig(&server.config)
 
+	server.pathManager.UseConfig(&server.config)
+	server.pathManager.Listen(&server.nodeManager, &server.msgHub)
+
 	server.statusManager.UseConfig(&server.config)
 	server.statusManager.Listen(&server.nodeManager, &server.msgHub)
 
 	server.tokenManager.UseConfig(&server.config)
-	server.tokenManager.Listen(&server.nodeManager, &server.statusManager, &server.msgHub)
+	server.tokenManager.Listen(
+		&server.nodeManager,
+		&server.statusManager,
+		&server.pathManager,
+		&server.msgHub)
 
 	server.lockManager.UseConfig(&server.config)
 	server.lockManager.Listen(&server.nodeManager, &server.msgHub)
@@ -55,6 +64,8 @@ func (server *Server) Start(config c.Config) {
 }
 
 func (server *Server) RequestUpload(bucketName, fileName string) (address, token string, err error) {
+	server.statusManager.CountRequest()
+
 	uploadPath := path.Join(bucketName, fileName)
 
 	err = server.lockManager.LockResource("path:" + uploadPath)
@@ -63,7 +74,11 @@ func (server *Server) RequestUpload(bucketName, fileName string) (address, token
 	}
 	defer server.lockManager.UnlockResource("path:" + uploadPath)
 
-	server.statusManager.CountRequest()
+	if server.pathManager.IsLocked(uploadPath) {
+		return "", "", ErrorPathIsLocked
+	}
+
+	server.pathManager.LockPath(uploadPath)
 
 	nodeName := server.statusManager.ChooseNodeForUpload()
 	token = server.tokenManager.RequestToken(uploadPath, nodeName, "upload")
@@ -83,14 +98,14 @@ func (server *Server) Upload(token string, file multipart.File, fileHeader *mult
 		return err
 	}
 
-	uploadPath = path.Join(server.config.UploadDir, uploadPath)
+	newPath := path.Join(server.config.UploadDir, uploadPath)
 
-	err = os.MkdirAll(path.Dir(uploadPath), 0755)
+	err = os.MkdirAll(path.Dir(newPath), 0755)
 	if err != nil {
 		return err
 	}
 
-	resultFile, err := os.Create(uploadPath)
+	resultFile, err := os.Create(newPath)
 	if err != nil {
 		return err
 	}
@@ -98,11 +113,13 @@ func (server *Server) Upload(token string, file multipart.File, fileHeader *mult
 	_, err = io.Copy(resultFile, file)
 	if err != nil {
 		resultFile.Close()
-		os.Remove(uploadPath)
+		os.Remove(newPath)
 		return err
 	}
 
 	resultFile.Close()
+
+	server.replicationManager.ReplicateFile(uploadPath)
 
 	return nil
 }

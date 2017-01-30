@@ -43,3 +43,15 @@ type MessageFile struct {
 type MessageFileReceived struct {
 	Path string
 }
+
+type MessageLockPath struct {
+	Path string
+}
+
+type MessageUnlockPath struct {
+	Path string
+}
+
+type MessagePathLocked struct {
+	Path string
+}

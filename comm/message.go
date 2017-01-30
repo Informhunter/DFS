@@ -17,6 +17,9 @@ const (
 	MessageTypeGrantLockPermission
 	MessageTypeFile
 	MessageTypeFileReceived
+	MessageTypeLockPath
+	MessageTypeUnlockPath
+	MessageTypePathLocked
 )
 
 func (mt MessageType) String() string {
@@ -39,6 +42,12 @@ func (mt MessageType) String() string {
 		return "MessageTypeFile"
 	case MessageTypeFileReceived:
 		return "MessageTypeFileReceived"
+	case MessageTypeLockPath:
+		return "MessageTypeLockPath"
+	case MessageTypeUnlockPath:
+		return "MessageTypeUnlockPath"
+	case MessageTypePathLocked:
+		return "MessageTypePathLocked"
 	}
 	return "Unknown"
 }

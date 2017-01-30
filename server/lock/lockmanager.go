@@ -5,7 +5,6 @@ import (
 	c "dfs/config"
 	"dfs/server/node"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 )
@@ -49,14 +48,11 @@ func (lm *LockManager) HandleMessage(msg *comm.Message) {
 	lm.mutex.Lock()
 	defer lm.mutex.Unlock()
 
-	fmt.Printf("Got message %s from %s\n", msg.Type, msg.SourceNode)
-
 	switch msg.Type {
 	case comm.MessageTypeRequestLock:
 		var request comm.MessageRequestLock
 		msg.DecodeData(&request)
 		res := request.Resource
-		fmt.Printf("Resource %s\n", res)
 		if lm.shouldGrantPermission(request, msg.SourceNode) {
 			responseMsg := comm.Message{Type: comm.MessageTypeGrantLockPermission}
 			response := comm.MessageGrantLockPermission{
@@ -72,7 +68,6 @@ func (lm *LockManager) HandleMessage(msg *comm.Message) {
 	case comm.MessageTypeGrantLockPermission:
 		var grant comm.MessageGrantLockPermission
 		msg.DecodeData(&grant)
-		fmt.Printf("Resource %s\n", grant.Resource)
 		lm.lockMap[grant.Resource].GrantedCount--
 		if lm.lockMap[grant.Resource].GrantedCount == 0 {
 			lm.lockMap[grant.Resource].WaitChan <- true
