@@ -3,6 +3,7 @@ package server
 import (
 	"dfs/comm"
 	c "dfs/config"
+	"dfs/server/lock"
 	"dfs/server/node"
 	"dfs/server/status"
 	"dfs/server/token"
@@ -30,17 +31,16 @@ type Server struct {
 	statusManager status.StatusManager
 	nodeManager   node.NodeManager
 	tokenManager  token.TokenManager
+	lockManager   lock.LockManager
 	msgHub        comm.MessageHub
-	tokenMap      map[string]string
 }
 
 func (server *Server) Start(config c.Config) {
-	server.tokenMap = make(map[string]string, 0)
-
 	server.nodeManager.UseConfig(config)
 
 	server.statusManager.Listen(&server.nodeManager, &server.msgHub)
 	server.tokenManager.Listen(&server.nodeManager, &server.statusManager, &server.msgHub)
+	server.lockManager.Listen(&server.nodeManager, &server.msgHub)
 
 	server.msgHub.Listen(&server.nodeManager, config.This.PrivateAddress)
 }
@@ -48,8 +48,11 @@ func (server *Server) Start(config c.Config) {
 func (server *Server) RequestUpload(bucketName, fileName string) (address, token string, err error) {
 	uploadPath := path.Join(UploadDir, bucketName, fileName)
 
-	server.Lock()
-	defer server.Unlock()
+	err = server.lockManager.LockResource("path:" + uploadPath)
+	if err != nil {
+		return "", "", err
+	}
+	defer server.lockManager.UnlockResource("path:" + uploadPath)
 
 	server.statusManager.CountRequest()
 
@@ -64,9 +67,6 @@ func (server *Server) RequestUpload(bucketName, fileName string) (address, token
 }
 
 func (server *Server) Upload(token string, file multipart.File, fileHeader *multipart.FileHeader) (err error) {
-	server.Lock()
-	defer server.Unlock()
-
 	server.statusManager.CountRequest()
 
 	uploadPath, err := server.tokenManager.GetPathByToken(token, "upload")
@@ -97,12 +97,9 @@ func (server *Server) Upload(token string, file multipart.File, fileHeader *mult
 }
 
 func (server *Server) RequestDownload(bucketName, fileName string) (address, token string, err error) {
-	downloadPath := path.Join(UploadDir, bucketName, fileName)
-
-	server.Lock()
-	defer server.Unlock()
-
 	server.statusManager.CountRequest()
+
+	downloadPath := path.Join(UploadDir, bucketName, fileName)
 
 	nodeName := server.statusManager.ChooseNodeForDownload()
 	token = server.tokenManager.RequestToken(downloadPath, nodeName, "download")
@@ -114,9 +111,6 @@ func (server *Server) RequestDownload(bucketName, fileName string) (address, tok
 }
 
 func (server *Server) Download(token string) (downloadPath string, err error) {
-	server.Lock()
-	defer server.Unlock()
-
 	server.statusManager.CountRequest()
 
 	downloadPath, err = server.tokenManager.GetPathByToken(token, "download")
