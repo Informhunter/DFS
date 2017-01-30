@@ -80,7 +80,7 @@ func requestDownload(response http.ResponseWriter, request *http.Request) {
 		DownloadURL      string
 		DownloadFileName string
 	}{
-		address + DownloadURL + token,
+		"http://" + address + DownloadURL + token,
 		fileName,
 	})
 
@@ -134,7 +134,7 @@ func requestUpload(response http.ResponseWriter, request *http.Request) {
 		Action        string
 		UploadFileKey string
 	}{
-		address + UploadURL + token,
+		"http://" + address + UploadURL + token,
 		UploadFileKey,
 	})
 
