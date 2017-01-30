@@ -3,9 +3,11 @@ package token
 import (
 	"dfs/comm"
 	"dfs/server/node"
+	"dfs/server/status"
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -13,6 +15,8 @@ import (
 
 var (
 	ErrorTokenDoesNotExist = errors.New("Token does not exist.")
+	ErrorFileAlreadyExists = errors.New("File already exists.")
+	ErrorFileDoesNotExist  = errors.New("File does not exist.")
 )
 
 type TokenInfo struct {
@@ -29,17 +33,23 @@ type TokenManager struct {
 	incomingUploadTokens   map[string]chan string
 	incomingDownloadTokens map[string]chan string
 
-	nodeManager *node.NodeManager
-	msgHub      *comm.MessageHub
+	nodeManager   *node.NodeManager
+	statusManager *status.StatusManager
+	msgHub        *comm.MessageHub
 }
 
-func (tm *TokenManager) Listen(nodeManager *node.NodeManager, msgHub *comm.MessageHub) {
+func (tm *TokenManager) Listen(
+	nodeManager *node.NodeManager,
+	statusManager *status.StatusManager,
+	msgHub *comm.MessageHub) {
+
 	tm.incomingUploadTokens = make(map[string]chan string, 0)
 	tm.incomingDownloadTokens = make(map[string]chan string, 0)
 	tm.uploadTokenMap = make(map[string]TokenInfo, 0)
 	tm.downloadTokenMap = make(map[string]TokenInfo, 0)
 
 	tm.nodeManager = nodeManager
+	tm.statusManager = statusManager
 	tm.msgHub = msgHub
 
 	msgHub.Subscribe(tm,
@@ -57,11 +67,13 @@ func (tm *TokenManager) Listen(nodeManager *node.NodeManager, msgHub *comm.Messa
 			for token, tokenInfo := range tm.uploadTokenMap {
 				if now.After(tokenInfo.ExpireTime) {
 					delete(tm.uploadTokenMap, token)
+					tm.statusManager.TokenDeleted()
 				}
 			}
 			for token, tokenInfo := range tm.downloadTokenMap {
 				if now.After(tokenInfo.ExpireTime) {
-					delete(tm.uploadTokenMap, token)
+					delete(tm.downloadTokenMap, token)
+					tm.statusManager.TokenDeleted()
 				}
 			}
 			tm.mutex.Unlock()
@@ -69,19 +81,83 @@ func (tm *TokenManager) Listen(nodeManager *node.NodeManager, msgHub *comm.Messa
 	}()
 }
 
-func (tm *TokenManager) GetUploadPath(token string) (path string, err error) {
+func (tm *TokenManager) createLocalToken(path string, tokenType string) (token string, err error) {
+	token = uuid.New().String()
+	var tokenMap map[string]TokenInfo
+
+	switch tokenType {
+
+	case "upload":
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			return "", ErrorFileAlreadyExists
+		}
+		tokenMap = tm.uploadTokenMap
+
+	case "download":
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return "", ErrorFileDoesNotExist
+		}
+		tokenMap = tm.downloadTokenMap
+	default:
+		log.Fatal("Bad")
+	}
+
+	tokenMap[token] = TokenInfo{
+		Path:       path,
+		ExpireTime: time.Now().Add(time.Minute * 2),
+	}
+
+	tm.statusManager.TokenAdded()
+	return token, nil
+}
+
+func (tm *TokenManager) GetPathByToken(token string, tokenType string) (path string, err error) {
 	tm.mutex.Lock()
 	defer tm.mutex.Unlock()
-	tokenInfo, exists := tm.uploadTokenMap[token]
+
+	var tokenMap map[string]TokenInfo
+
+	switch tokenType {
+	case "upload":
+		tokenMap = tm.uploadTokenMap
+	case "download":
+		tokenMap = tm.downloadTokenMap
+	default:
+		log.Fatal("Bad")
+	}
+
+	tokenInfo, exists := tokenMap[token]
 	if !exists {
 		return "", ErrorTokenDoesNotExist
 	}
-	delete(tm.uploadTokenMap, token)
+	delete(tokenMap, token)
+	tm.statusManager.TokenDeleted()
 	return tokenInfo.Path, nil
 }
 
-func (tm *TokenManager) RequestUploadToken(path string, nodeName string) (token string) {
-	requestMsg := comm.Message{Type: comm.MessageTypeRequestUploadToken}
+func (tm *TokenManager) RequestToken(path string, nodeName string, tokenType string) (token string) {
+
+	if nodeName == tm.nodeManager.This.Name {
+		tm.mutex.Lock()
+		defer tm.mutex.Unlock()
+		token, err := tm.createLocalToken(path, tokenType)
+		if err != nil {
+			return ""
+		}
+		return token
+	}
+
+	var requestMsg comm.Message
+
+	switch tokenType {
+	case "upload":
+		requestMsg.Type = comm.MessageTypeRequestUploadToken
+	case "download":
+		requestMsg.Type = comm.MessageTypeRequestDownloadToken
+	default:
+		log.Fatal("Bad")
+	}
+
 	request := comm.MessageRequestToken{
 		Path: path,
 	}
@@ -90,42 +166,22 @@ func (tm *TokenManager) RequestUploadToken(path string, nodeName string) (token 
 	answerChan := make(chan string, 1)
 
 	tm.mutex.Lock()
-	tm.incomingUploadTokens[path] = answerChan
+
+	switch tokenType {
+	case "upload":
+		tm.incomingUploadTokens[path] = answerChan
+	case "download":
+		tm.incomingDownloadTokens[path] = answerChan
+	default:
+		log.Fatal("Bad")
+	}
+
 	tm.mutex.Unlock()
 
 	tm.msgHub.Send(requestMsg, nodeName)
 	token = <-answerChan
 
 	return token
-}
-
-func (tm *TokenManager) RequestDownloadToken(path string, nodeName string) (token string) {
-	requestMsg := comm.Message{Type: comm.MessageTypeRequestDownloadToken}
-	request := comm.MessageRequestToken{
-		Path: path,
-	}
-	requestMsg.EncodeData(request)
-
-	answerChan := make(chan string, 1)
-
-	tm.mutex.Lock()
-	tm.incomingDownloadTokens[path] = answerChan
-	tm.mutex.Unlock()
-
-	tm.msgHub.Send(requestMsg, nodeName)
-	token = <-answerChan
-
-	return token
-}
-func (tm *TokenManager) GetDownloadPath(token string) (path string, err error) {
-	tm.mutex.Lock()
-	defer tm.mutex.Unlock()
-	tokenInfo, exists := tm.downloadTokenMap[token]
-	if !exists {
-		return "", ErrorTokenDoesNotExist
-	}
-	delete(tm.downloadTokenMap, token)
-	return tokenInfo.Path, nil
 }
 
 func (tm *TokenManager) HandleMessage(msg *comm.Message) {
@@ -145,14 +201,9 @@ func (tm *TokenManager) HandleMessage(msg *comm.Message) {
 			return
 		}
 
-		token := uuid.New().String()
-		if _, err := os.Stat(request.Path); !os.IsNotExist(err) {
-			return
-		}
-
-		tm.uploadTokenMap[token] = TokenInfo{
-			Path:       request.Path,
-			ExpireTime: time.Now().Add(time.Minute * 2),
+		token, err := tm.createLocalToken(request.Path, "upload")
+		if err != nil {
+			return //TODO: Add 'bad path' response
 		}
 
 		responseMsg := comm.Message{Type: comm.MessageTypeUploadToken}
@@ -181,16 +232,10 @@ func (tm *TokenManager) HandleMessage(msg *comm.Message) {
 	case comm.MessageTypeRequestDownloadToken:
 		var request comm.MessageRequestToken
 		msg.DecodeData(&request)
-		token := uuid.New().String()
-		if _, err := os.Stat(request.Path); os.IsNotExist(err) {
-			return
-		}
 
-		fmt.Println("Requested path: ", request.Path)
-
-		tm.downloadTokenMap[token] = TokenInfo{
-			Path:       request.Path,
-			ExpireTime: time.Now().Add(time.Minute * 2),
+		token, err := tm.createLocalToken(request.Path, "download")
+		if err != nil {
+			return //TODO: Add 'bad path' response
 		}
 
 		responseMsg := comm.Message{Type: comm.MessageTypeDownloadToken}

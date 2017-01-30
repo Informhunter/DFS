@@ -40,7 +40,7 @@ func (server *Server) Start(config c.Config) {
 	server.nodeManager.UseConfig(config)
 
 	server.statusManager.Listen(&server.nodeManager, &server.msgHub)
-	server.tokenManager.Listen(&server.nodeManager, &server.msgHub)
+	server.tokenManager.Listen(&server.nodeManager, &server.statusManager, &server.msgHub)
 
 	server.msgHub.Listen(&server.nodeManager, config.This.PrivateAddress)
 }
@@ -54,7 +54,7 @@ func (server *Server) RequestUpload(bucketName, fileName string) (address, token
 	server.statusManager.CountRequest()
 
 	nodeName := server.statusManager.ChooseNodeForUpload()
-	token = server.tokenManager.RequestUploadToken(uploadPath, nodeName)
+	token = server.tokenManager.RequestToken(uploadPath, nodeName, "upload")
 
 	if token == "" {
 		return "", "", ErrorFailedToRequestToken
@@ -69,12 +69,10 @@ func (server *Server) Upload(token string, file multipart.File, fileHeader *mult
 
 	server.statusManager.CountRequest()
 
-	uploadPath, err := server.tokenManager.GetUploadPath(token)
+	uploadPath, err := server.tokenManager.GetPathByToken(token, "upload")
 	if err != nil {
 		return err
 	}
-
-	server.statusManager.TokenDeleted()
 
 	err = os.MkdirAll(path.Dir(uploadPath), 0755)
 	if err != nil {
@@ -107,7 +105,7 @@ func (server *Server) RequestDownload(bucketName, fileName string) (address, tok
 	server.statusManager.CountRequest()
 
 	nodeName := server.statusManager.ChooseNodeForDownload()
-	token = server.tokenManager.RequestDownloadToken(downloadPath, nodeName)
+	token = server.tokenManager.RequestToken(downloadPath, nodeName, "download")
 	if token == "" {
 		return "", "", ErrorFailedToRequestToken
 	}
@@ -121,12 +119,10 @@ func (server *Server) Download(token string) (downloadPath string, err error) {
 
 	server.statusManager.CountRequest()
 
-	downloadPath, err = server.tokenManager.GetDownloadPath(token)
+	downloadPath, err = server.tokenManager.GetPathByToken(token, "download")
 	if err != nil {
 		return "", err
 	}
-
-	server.statusManager.TokenDeleted()
 
 	return downloadPath, err
 }
