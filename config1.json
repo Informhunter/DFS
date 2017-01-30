@@ -1,0 +1,20 @@
+{
+	"This": {
+		"Name": "one",
+		"PublicAddress": "localhost:80",
+		"PrivateAddress": "localhost:1234"
+	},
+	"Nodes": [
+		{
+			"Name": "two",
+			"PublicAddress": "localhost:81",
+			"PrivateAddress": "localhost:1235"
+		},
+		{
+			"Name": "three",
+			"PublicAddress": "localhost:82",
+			"PrivateAddress": "localhost:1236"
+		}
+	],
+	"UploadDir": "uploads1"
+}
