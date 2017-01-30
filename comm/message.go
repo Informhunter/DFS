@@ -13,6 +13,8 @@ const (
 	MessageTypeUploadToken
 	MessageTypeRequestDownloadToken
 	MessageTypeDownloadToken
+	MessageTypeRequestLock
+	MessageTypeGrantLockPermission
 )
 
 func (mt MessageType) String() string {

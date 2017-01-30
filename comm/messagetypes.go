@@ -25,3 +25,12 @@ type MessageToken struct {
 	Path  string
 	Token string
 }
+
+type MessageRequestLock struct {
+	Resource string
+	Clock    int64
+}
+
+type MessageGrantLockPermission struct {
+	Resource string
+}
