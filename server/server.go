@@ -15,10 +15,6 @@ import (
 	"sync"
 )
 
-const (
-	UploadDir = "uploads"
-)
-
 var (
 	ErrorFileAlreadyExists    = errors.New("File already exists.")
 	ErrorPathIsLocked         = errors.New("Upload path is locked.")
@@ -28,6 +24,7 @@ var (
 
 type Server struct {
 	sync.Mutex
+	config        c.Config
 	statusManager status.StatusManager
 	nodeManager   node.NodeManager
 	tokenManager  token.TokenManager
@@ -36,17 +33,24 @@ type Server struct {
 }
 
 func (server *Server) Start(config c.Config) {
-	server.nodeManager.UseConfig(config)
+	server.config = config
 
+	server.nodeManager.UseConfig(&server.config)
+
+	server.statusManager.UseConfig(&server.config)
 	server.statusManager.Listen(&server.nodeManager, &server.msgHub)
+
+	server.tokenManager.UseConfig(&server.config)
 	server.tokenManager.Listen(&server.nodeManager, &server.statusManager, &server.msgHub)
+
+	server.lockManager.UseConfig(&server.config)
 	server.lockManager.Listen(&server.nodeManager, &server.msgHub)
 
 	server.msgHub.Listen(&server.nodeManager, config.This.PrivateAddress)
 }
 
 func (server *Server) RequestUpload(bucketName, fileName string) (address, token string, err error) {
-	uploadPath := path.Join(UploadDir, bucketName, fileName)
+	uploadPath := path.Join(bucketName, fileName)
 
 	err = server.lockManager.LockResource("path:" + uploadPath)
 	if err != nil {
@@ -74,6 +78,8 @@ func (server *Server) Upload(token string, file multipart.File, fileHeader *mult
 		return err
 	}
 
+	uploadPath = path.Join(server.config.UploadDir, uploadPath)
+
 	err = os.MkdirAll(path.Dir(uploadPath), 0755)
 	if err != nil {
 		return err
@@ -99,7 +105,7 @@ func (server *Server) Upload(token string, file multipart.File, fileHeader *mult
 func (server *Server) RequestDownload(bucketName, fileName string) (address, token string, err error) {
 	server.statusManager.CountRequest()
 
-	downloadPath := path.Join(UploadDir, bucketName, fileName)
+	downloadPath := path.Join(bucketName, fileName)
 
 	nodeName := server.statusManager.ChooseNodeForDownload()
 	token = server.tokenManager.RequestToken(downloadPath, nodeName, "download")
@@ -118,7 +124,9 @@ func (server *Server) Download(token string) (downloadPath string, err error) {
 		return "", err
 	}
 
-	return downloadPath, err
+	downloadPath = path.Join(server.config.UploadDir, downloadPath)
+
+	return downloadPath, nil
 }
 
 func (server *Server) Status() map[string]status.NodeStatus {

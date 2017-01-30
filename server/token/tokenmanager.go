@@ -2,6 +2,7 @@ package token
 
 import (
 	"dfs/comm"
+	c "dfs/config"
 	"dfs/server/node"
 	"dfs/server/status"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"log"
 	"os"
+	p "path"
 	"sync"
 	"time"
 )
@@ -36,6 +38,11 @@ type TokenManager struct {
 	nodeManager   *node.NodeManager
 	statusManager *status.StatusManager
 	msgHub        *comm.MessageHub
+	config        *c.Config
+}
+
+func (tm *TokenManager) UseConfig(config *c.Config) {
+	tm.config = config
 }
 
 func (tm *TokenManager) Listen(
@@ -85,16 +92,18 @@ func (tm *TokenManager) createLocalToken(path string, tokenType string) (token s
 	token = uuid.New().String()
 	var tokenMap map[string]TokenInfo
 
+	checkPath := p.Join(tm.config.UploadDir, path)
+
 	switch tokenType {
 
 	case "upload":
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
+		if _, err := os.Stat(checkPath); !os.IsNotExist(err) {
 			return "", ErrorFileAlreadyExists
 		}
 		tokenMap = tm.uploadTokenMap
 
 	case "download":
-		if _, err := os.Stat(path); os.IsNotExist(err) {
+		if _, err := os.Stat(checkPath); os.IsNotExist(err) {
 			return "", ErrorFileDoesNotExist
 		}
 		tokenMap = tm.downloadTokenMap

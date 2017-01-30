@@ -3,6 +3,7 @@ package status
 
 import (
 	"dfs/comm"
+	c "dfs/config"
 	"dfs/server/node"
 	//"fmt"
 	"math/rand"
@@ -22,6 +23,11 @@ type StatusManager struct {
 	msgHub       *comm.MessageHub
 	this         NodeStatus
 	nodeStatuses map[string]NodeStatus
+	config       *c.Config
+}
+
+func (sm *StatusManager) UseConfig(config *c.Config) {
+	sm.config = config
 }
 
 func (sm *StatusManager) Listen(nodeManager *node.NodeManager, msgHub *comm.MessageHub) {

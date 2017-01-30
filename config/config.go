@@ -12,9 +12,10 @@ type NodeInfo struct {
 }
 
 type Config struct {
-	fileName string
-	This     NodeInfo
-	Nodes    []NodeInfo
+	fileName  string
+	This      NodeInfo
+	Nodes     []NodeInfo
+	UploadDir string
 }
 
 func (config *Config) Load(configFileName string) error {

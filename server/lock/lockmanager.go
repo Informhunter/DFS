@@ -2,6 +2,7 @@ package lock
 
 import (
 	"dfs/comm"
+	c "dfs/config"
 	"dfs/server/node"
 	"errors"
 	"fmt"
@@ -27,6 +28,11 @@ type LockManager struct {
 
 	nodeManager *node.NodeManager
 	msgHub      *comm.MessageHub
+	config      *c.Config
+}
+
+func (lm *LockManager) UseConfig(config *c.Config) {
+	lm.config = config
 }
 
 func (lm *LockManager) Listen(nodeManager *node.NodeManager, msgHub *comm.MessageHub) {

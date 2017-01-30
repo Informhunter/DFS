@@ -48,7 +48,7 @@ func (nm *NodeManager) AddNode(nodeInfo NodeInfo) error {
 	return nil
 }
 
-func (nm *NodeManager) UseConfig(config c.Config) {
+func (nm *NodeManager) UseConfig(config *c.Config) {
 	nm.This.Name = config.This.Name
 	nm.This.PublicAddress = config.This.PublicAddress
 	nm.This.PrivateAddress = config.This.PrivateAddress
