@@ -29,6 +29,10 @@ func (mt MessageType) String() string {
 		return "MessageTypeRequestDownloadToken"
 	case MessageTypeDownloadToken:
 		return "MessageTypeDownloadToken"
+	case MessageTypeRequestLock:
+		return "MessageTypeRequestLock"
+	case MessageTypeGrantLockPermission:
+		return "MessageTypeGrantLockPermission"
 	}
 	return "Unknown"
 }
