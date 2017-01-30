@@ -27,8 +27,8 @@ type MessageToken struct {
 }
 
 type MessageRequestLock struct {
-	Resource string
-	Clock    int64
+	Resource  string
+	Timestamp int64
 }
 
 type MessageGrantLockPermission struct {
