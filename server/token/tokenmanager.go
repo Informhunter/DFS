@@ -5,7 +5,7 @@ import (
 	"dfs/server/node"
 	"dfs/server/status"
 	"errors"
-	"fmt"
+	//"fmt"
 	"github.com/google/uuid"
 	"log"
 	"os"
@@ -188,8 +188,8 @@ func (tm *TokenManager) HandleMessage(msg *comm.Message) {
 	tm.mutex.Lock()
 	defer tm.mutex.Unlock()
 
-	fmt.Printf("Got message from %s\n", msg.SourceNode)
-	fmt.Printf("Message type: %s\n", msg.Type)
+	//fmt.Printf("Got message from %s\n", msg.SourceNode)
+	//fmt.Printf("Message type: %s\n", msg.Type)
 
 	switch msg.Type {
 
@@ -245,7 +245,7 @@ func (tm *TokenManager) HandleMessage(msg *comm.Message) {
 		}
 		responseMsg.EncodeData(tokenMessage)
 		tm.msgHub.Send(responseMsg, msg.SourceNode)
-		fmt.Println("Response msg sent.")
+		//fmt.Println("Response msg sent.")
 
 	case comm.MessageTypeDownloadToken:
 		var response comm.MessageToken

@@ -99,12 +99,18 @@ func (sm StatusManager) Status() map[string]NodeStatus {
 
 func (sm StatusManager) ChooseNodeForUpload() (nodeName string) {
 	nodeNames := sm.nodeManager.NodeNames()
-	index := rand.Int() % len(nodeNames)
-	return nodeNames[index]
+	index := rand.Int() % (len(nodeNames) + 1)
+	if index == 0 {
+		return sm.nodeManager.This.Name
+	}
+	return nodeNames[index-1]
 }
 
 func (sm StatusManager) ChooseNodeForDownload() (nodeName string) {
 	nodeNames := sm.nodeManager.NodeNames()
-	index := rand.Int() % len(nodeNames)
-	return nodeNames[index]
+	index := rand.Int() % (len(nodeNames) + 1)
+	if index == 0 {
+		return sm.nodeManager.This.Name
+	}
+	return nodeNames[index-1]
 }
