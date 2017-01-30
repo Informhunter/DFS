@@ -5,6 +5,7 @@ import (
 	c "dfs/config"
 	"dfs/server/lock"
 	"dfs/server/node"
+	"dfs/server/replication"
 	"dfs/server/status"
 	"dfs/server/token"
 	"errors"
@@ -24,12 +25,13 @@ var (
 
 type Server struct {
 	sync.Mutex
-	config        c.Config
-	statusManager status.StatusManager
-	nodeManager   node.NodeManager
-	tokenManager  token.TokenManager
-	lockManager   lock.LockManager
-	msgHub        comm.MessageHub
+	config             c.Config
+	statusManager      status.StatusManager
+	nodeManager        node.NodeManager
+	tokenManager       token.TokenManager
+	lockManager        lock.LockManager
+	replicationManager replication.ReplicationManager
+	msgHub             comm.MessageHub
 }
 
 func (server *Server) Start(config c.Config) {
@@ -45,6 +47,9 @@ func (server *Server) Start(config c.Config) {
 
 	server.lockManager.UseConfig(&server.config)
 	server.lockManager.Listen(&server.nodeManager, &server.msgHub)
+
+	server.replicationManager.UseConfig(&server.config)
+	server.replicationManager.Listen(&server.nodeManager, &server.statusManager, &server.msgHub)
 
 	server.msgHub.Listen(&server.nodeManager, config.This.PrivateAddress)
 }

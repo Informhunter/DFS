@@ -15,6 +15,8 @@ const (
 	MessageTypeDownloadToken
 	MessageTypeRequestLock
 	MessageTypeGrantLockPermission
+	MessageTypeFile
+	MessageTypeFileReceived
 )
 
 func (mt MessageType) String() string {
@@ -33,6 +35,10 @@ func (mt MessageType) String() string {
 		return "MessageTypeRequestLock"
 	case MessageTypeGrantLockPermission:
 		return "MessageTypeGrantLockPermission"
+	case MessageTypeFile:
+		return "MessageTypeFile"
+	case MessageTypeFileReceived:
+		return "MessageTypeFileReceived"
 	}
 	return "Unknown"
 }

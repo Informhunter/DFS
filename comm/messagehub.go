@@ -79,3 +79,23 @@ func (msgHub *MessageHub) Broadcast(msg Message) error {
 	}
 	return nil
 }
+
+func (msgHub *MessageHub) SendInNewConnection(msg Message, nodeName string) (err error) {
+	msg.SourceNode = msgHub.nodeManager.This.Name
+	node := msgHub.nodeManager.Node(nodeName)
+	conn, err := net.Dial("tcp", node.PrivateAddress)
+	if err != nil {
+		return err
+	}
+	enc := gob.NewEncoder(conn)
+	enc.Encode(msg)
+	return nil
+}
+
+func (msgHub *MessageHub) BroadcastInNewConnection(msg Message) error {
+	msg.SourceNode = msgHub.nodeManager.This.Name
+	for _, node := range msgHub.nodeManager.Nodes() {
+		msgHub.SendInNewConnection(msg, node.Name)
+	}
+	return nil
+}

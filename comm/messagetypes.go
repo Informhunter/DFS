@@ -34,3 +34,12 @@ type MessageRequestLock struct {
 type MessageGrantLockPermission struct {
 	Resource string
 }
+
+type MessageFile struct {
+	Path     string
+	FileData []byte
+}
+
+type MessageFileReceived struct {
+	Path string
+}
