@@ -203,7 +203,7 @@ func (tm *TokenManager) HandleMessage(msg *comm.Message) {
 
 		token, err := tm.createLocalToken(request.Path, "upload")
 		if err != nil {
-			return //TODO: Add 'bad path' response
+			token = ""
 		}
 
 		responseMsg := comm.Message{Type: comm.MessageTypeUploadToken}
@@ -235,7 +235,7 @@ func (tm *TokenManager) HandleMessage(msg *comm.Message) {
 
 		token, err := tm.createLocalToken(request.Path, "download")
 		if err != nil {
-			return //TODO: Add 'bad path' response
+			token = ""
 		}
 
 		responseMsg := comm.Message{Type: comm.MessageTypeDownloadToken}
