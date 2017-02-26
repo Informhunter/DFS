@@ -1,3 +1,4 @@
+//Package comm provides message-based communication between several nodes
 package comm
 
 import (
@@ -6,16 +7,20 @@ import (
 	"net"
 )
 
+//MessageHandler is the interface that must be implemented to be able to subscribe to incoming messages
 type MessageHandler interface {
 	HandleMessage(*Message)
 }
 
+//MessageHub handles all the netwoking between nodes.
+//It provides methods to send messages, broadcast messages, subscribe to recive certain message types
 type MessageHub struct {
 	nodeManager     *node.NodeManager
 	messageHandlers map[MessageType][]MessageHandler
 	outConnMap      map[string]net.Conn
 }
 
+//Listen method starts listening for incoming connections and messages from other nodes
 func (msgHub *MessageHub) Listen(nodeManager *node.NodeManager, addr string) error {
 	msgHub.outConnMap = make(map[string]net.Conn, 0)
 	msgHub.nodeManager = nodeManager
@@ -47,6 +52,7 @@ func (msgHub *MessageHub) Listen(nodeManager *node.NodeManager, addr string) err
 	return nil
 }
 
+//Subscribe method subscribes MessageHandler to receive certain message types
 func (msgHub *MessageHub) Subscribe(msgHandler MessageHandler, msgTypes ...MessageType) {
 	if msgHub.messageHandlers == nil {
 		msgHub.messageHandlers = make(map[MessageType][]MessageHandler, 0)
@@ -56,6 +62,7 @@ func (msgHub *MessageHub) Subscribe(msgHandler MessageHandler, msgTypes ...Messa
 	}
 }
 
+//Send method sends message to other node
 func (msgHub *MessageHub) Send(msg Message, nodeName string) (err error) {
 	msg.SourceNode = msgHub.nodeManager.This.Name
 	node := msgHub.nodeManager.Node(nodeName)
@@ -72,6 +79,7 @@ func (msgHub *MessageHub) Send(msg Message, nodeName string) (err error) {
 	return nil
 }
 
+//Broadcast method broadcasts messages to all the nodes
 func (msgHub *MessageHub) Broadcast(msg Message) error {
 	msg.SourceNode = msgHub.nodeManager.This.Name
 	for _, node := range msgHub.nodeManager.Nodes() {
@@ -80,6 +88,7 @@ func (msgHub *MessageHub) Broadcast(msg Message) error {
 	return nil
 }
 
+//SendInNewConnection method creates new connection and uses it to send the message
 func (msgHub *MessageHub) SendInNewConnection(msg Message, nodeName string) (err error) {
 	msg.SourceNode = msgHub.nodeManager.This.Name
 	node := msgHub.nodeManager.Node(nodeName)
@@ -92,6 +101,7 @@ func (msgHub *MessageHub) SendInNewConnection(msg Message, nodeName string) (err
 	return nil
 }
 
+//BroadcastInNewConnection method creates new connections and uses them to broadcast the message
 func (msgHub *MessageHub) BroadcastInNewConnection(msg Message) error {
 	msg.SourceNode = msgHub.nodeManager.This.Name
 	for _, node := range msgHub.nodeManager.Nodes() {
